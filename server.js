@@ -41,6 +41,8 @@ mongoose.connect(process.env.MONGODB_URI)
 // ==========================================
 
 // 1. CREATE: Subir archivos y guardar documento en NoSQL 
+// ... código anterior de multer ...
+
 app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
         const { titulo, descripcion, tags } = req.body;
@@ -49,11 +51,14 @@ app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }
             return res.status(400).json({ error: 'Falta seleccionar imagen o audio.' });
         }
 
-        // Construir la URL local del servidor [cite: 125, 126]
-        const imagenUrl = `${req.protocol}://${req.get('host')}/uploads/${req.files['imagen'][0].filename}`;
-        const audioUrl = `${req.protocol}://${req.get('host')}/uploads/${req.files['audio'][0].filename}`;
+        // CAMBIO AQUÍ: Si está en Render usará tu dominio, si no, usa localhost
+        const baseURl = process.env.NODE_ENV === 'production' 
+            ? 'https://multimedia-backend-p6xb.onrender.com' 
+            : `${req.protocol}://${req.get('host')}`;
 
-        // Procesar los tags (separados por comas desde el frontend) [cite: 154]
+        const imagenUrl = `${baseURl}/uploads/${req.files['imagen'][0].filename}`;
+        const audioUrl = `${baseURl}/uploads/${req.files['audio'][0].filename}`;
+
         const listaTags = tags ? tags.split(',').map(tag => tag.trim()) : [];
 
         const nuevoElemento = new Multimedia({
@@ -64,7 +69,7 @@ app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }
             tags: listaTags
         });
 
-        await nuevoElemento.save(); // Inserción en MongoDB 
+        await nuevoElemento.save();
         res.status(201).json({ mensaje: 'Guardado con éxito en la nube', elemento: nuevoElemento });
     } catch (error) {
         res.status(500).json({ error: 'Error al guardar el elemento.' });
