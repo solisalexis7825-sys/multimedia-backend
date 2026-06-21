@@ -82,15 +82,10 @@ app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }
 });
 
 // 2. READ: Extraer todos los documentos de la BD 
-app.get('/api/multimedia', async (req, res) => {
-    try {
-        const elementos = await Multimedia.find().sort({ fechaCreacion: -1 }); // Extraer todos 
-        res.json(elementos);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener los datos.' });
-    }
+// Ruta raíz para comprobar que el backend en Render funciona
+app.get('/', (req, res) => {
+    res.send('🚀 El Servidor Backend NoSQL está corriendo perfectamente en la nube.');
 });
-
 // 3. UPDATE: Actualizar datos de un registro [cite: 145]
 app.put('/api/multimedia/:id', async (req, res) => {
     try {
