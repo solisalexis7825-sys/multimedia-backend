@@ -43,6 +43,8 @@ mongoose.connect(process.env.MONGODB_URI)
 // 1. CREATE: Subir archivos y guardar documento en NoSQL 
 // ... código anterior de multer ...
 
+// ... código anterior de multer ...
+
 app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
         const { titulo, descripcion, tags } = req.body;
@@ -51,13 +53,16 @@ app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }
             return res.status(400).json({ error: 'Falta seleccionar imagen o audio.' });
         }
 
-        // CAMBIO AQUÍ: Si está en Render usará tu dominio, si no, usa localhost
+        // CORRECCIÓN DE CONTENIDO MIXTO: Forzamos el uso de HTTPS en producción para Render
         const baseURl = process.env.NODE_ENV === 'production' 
             ? 'https://multimedia-backend-p6xb.onrender.com' 
             : `${req.protocol}://${req.get('host')}`;
 
-        const imagenUrl = `${baseURl}/uploads/${req.files['imagen'][0].filename}`;
-        const audioUrl = `${baseURl}/uploads/${req.files['audio'][0].filename}`;
+        // Si por alguna razón local req.protocol es http, nos aseguramos que en Render use https://
+        const baseURlSegura = baseURl.replace("http://multimedia-backend-p6xb.onrender.com", "https://multimedia-backend-p6xb.onrender.com");
+
+        const imagenUrl = `${baseURlSegura}/uploads/${req.files['imagen'][0].filename}`;
+        const audioUrl = `${baseURlSegura}/uploads/${req.files['audio'][0].filename}`;
 
         const listaTags = tags ? tags.split(',').map(tag => tag.trim()) : [];
 
