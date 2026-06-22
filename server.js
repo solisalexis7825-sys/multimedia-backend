@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Servir archivos estáticos
 
-// Asegurar que la carpeta 'uploads' exista localmente [cite: 124]
+// Asegurar que la carpeta 'uploads' exista localmente
 if (!fs.existsSync('./uploads')) {
     fs.mkdirSync('./uploads');
 }
@@ -31,20 +31,16 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// Conexión a MongoDB Atlas [cite: 47, 54]
+// Conexión a MongoDB Atlas
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('🚀 Conectado con éxito a MongoDB Atlas'))
     .catch(err => console.error('❌ Error de conexión a MongoDB:', err));
 
 // ==========================================
-// OPERACIONES CRUD [cite: 46, 121, 141]
+// OPERACIONES CRUD
 // ==========================================
 
 // 1. CREATE: Subir archivos y guardar documento en NoSQL 
-// ... código anterior de multer ...
-
-// ... código anterior de multer ...
-
 app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
         const { titulo, descripcion, tags } = req.body;
@@ -82,11 +78,16 @@ app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }
 });
 
 // 2. READ: Extraer todos los documentos de la BD 
-// Ruta raíz para comprobar que el backend en Render funciona
-app.get('/', (req, res) => {
-    res.send('🚀 El Servidor Backend NoSQL está corriendo perfectamente en la nube.');
+app.get('/api/multimedia', async (req, res) => {
+    try {
+        const elementos = await Multimedia.find().sort({ fechaCreacion: -1 }); // Extraer todos 
+        res.json(elementos);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener los datos.' });
+    }
 });
-// 3. UPDATE: Actualizar datos de un registro [cite: 145]
+
+// 3. UPDATE: Actualizar datos de un registro
 app.put('/api/multimedia/:id', async (req, res) => {
     try {
         const { titulo, descripcion, tags } = req.body;
@@ -95,7 +96,7 @@ app.put('/api/multimedia/:id', async (req, res) => {
         const elementoActualizado = await Multimedia.findByIdAndUpdate(
             req.params.id,
             { titulo, descripcion, tags: listaTags },
-            { new: true } // Retorna el documento modificado [cite: 145]
+            { new: true } // Retorna el documento modificado
         );
         res.json({ mensaje: 'Actualizado con éxito', elemento: elementoActualizado });
     } catch (error) {
@@ -103,10 +104,10 @@ app.put('/api/multimedia/:id', async (req, res) => {
     }
 });
 
-// 4. DELETE: Eliminar de MongoDB [cite: 146]
+// 4. DELETE: Eliminar de MongoDB
 app.delete('/api/multimedia/:id', async (req, res) => {
     try {
-        await Multimedia.findByIdAndDelete(req.params.id); // Borrar registro de BD [cite: 146]
+        await Multimedia.findByIdAndDelete(req.params.id); // Borrar registro de BD
         res.json({ mensaje: 'Elemento eliminado correctamente.' });
     } catch (error) {
         res.status(500).json({ error: 'Error al eliminar.' });
