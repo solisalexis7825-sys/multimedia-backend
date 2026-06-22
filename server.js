@@ -13,108 +13,101 @@ const PORT = process.env.PORT || 3000;
 // Middlewares
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Servir archivos estáticos
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Asegurar que la carpeta 'uploads' exista localmente
 if (!fs.existsSync('./uploads')) {
     fs.mkdirSync('./uploads');
 }
 
-// Configuración de almacenamiento con Multer 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + '-' + file.originalname);
-    }
+    destination: (req, file, cb) => { cb(null, 'uploads/'); },
+    filename: (req, file, cb) => { cb(null, Date.now() + '-' + file.originalname); }
 });
 const upload = multer({ storage: storage });
 
-// Conexión a MongoDB Atlas
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('🚀 Conectado con éxito a MongoDB Atlas'))
     .catch(err => console.error('❌ Error de conexión a MongoDB:', err));
 
-// ==========================================
-// OPERACIONES CRUD
-// ==========================================
+app.get('/', (req, res) => {
+    res.send('🚀 El Servidor Backend NoSQL está corriendo perfectamente en la nube de Render.');
+});
 
-// 1. CREATE: Subir archivos y guardar documento en NoSQL 
+// 1. CREATE
 app.post('/api/multimedia', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
         const { titulo, descripcion, tags } = req.body;
-        
         if (!req.files['imagen'] || !req.files['audio']) {
             return res.status(400).json({ error: 'Falta seleccionar imagen o audio.' });
         }
-
-        // CORRECCIÓN DE CONTENIDO MIXTO: Forzamos el uso de HTTPS en producción para Render
-        const baseURl = process.env.NODE_ENV === 'production' 
-            ? 'https://multimedia-backend-p6xb.onrender.com' 
-            : `${req.protocol}://${req.get('host')}`;
-
-        // Si por alguna razón local req.protocol es http, nos aseguramos que en Render use https://
+        const baseURl = process.env.NODE_ENV === 'production' ? 'https://multimedia-backend-p6xb.onrender.com' : `${req.protocol}://${req.get('host')}`;
         const baseURlSegura = baseURl.replace("http://multimedia-backend-p6xb.onrender.com", "https://multimedia-backend-p6xb.onrender.com");
 
         const imagenUrl = `${baseURlSegura}/uploads/${req.files['imagen'][0].filename}`;
         const audioUrl = `${baseURlSegura}/uploads/${req.files['audio'][0].filename}`;
-
         const listaTags = tags ? tags.split(',').map(tag => tag.trim()) : [];
 
-        const nuevoElemento = new Multimedia({
-            titulo,
-            descripcion,
-            imagenUrl,
-            audioUrl,
-            tags: listaTags
-        });
-
+        const nuevoElemento = new Multimedia({ titulo, descripcion, imagenUrl, audioUrl, tags: listaTags });
         await nuevoElemento.save();
-        res.status(201).json({ mensaje: 'Guardado con éxito en la nube', elemento: nuevoElemento });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al guardar el elemento.' });
-    }
+        res.status(201).json({ mensaje: 'Guardado con éxito', elemento: nuevoElemento });
+    } catch (error) { res.status(500).json({ error: 'Error al guardar.' }); }
 });
 
-// 2. READ: Extraer todos los documentos de la BD 
+// 2. READ
 app.get('/api/multimedia', async (req, res) => {
     try {
-        const elementos = await Multimedia.find().sort({ fechaCreacion: -1 }); // Extraer todos 
+        const elementos = await Multimedia.find().sort({ fechaCreacion: -1 });
         res.json(elementos);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener los datos.' });
-    }
+    } catch (error) { res.status(500).json({ error: 'Error al obtener los datos.' }); }
 });
 
-// 3. UPDATE: Actualizar datos de un registro
-app.put('/api/multimedia/:id', async (req, res) => {
+// 3. UPDATE (¡CORREGIDO PARA ADMITIR NUEVAS IMÁGENES Y AUDIOS!)
+app.put('/api/multimedia/:id', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
         const { titulo, descripcion, tags } = req.body;
         const listaTags = tags ? tags.split(',').map(tag => tag.trim()) : [];
 
+        // Buscar el elemento actual en la base de datos
+        const elementoExistente = await Multimedia.findById(req.params.id);
+        if (!elementoExistente) {
+            return res.status(404).json({ error: 'Elemento no encontrado.' });
+        }
+
+        let imagenUrl = elementoExistente.imagenUrl;
+        let audioUrl = elementoExistente.audioUrl;
+
+        const baseURl = process.env.NODE_ENV === 'production' ? 'https://multimedia-backend-p6xb.onrender.com' : `${req.protocol}://${req.get('host')}`;
+        const baseURlSegura = baseURl.replace("http://multimedia-backend-p6xb.onrender.com", "https://multimedia-backend-p6xb.onrender.com");
+
+        // Si el usuario subió una nueva imagen, se reemplaza la ruta
+        if (req.files && req.files['imagen']) {
+            imagenUrl = `${baseURlSegura}/uploads/${req.files['imagen'][0].filename}`;
+        }
+
+        // Si el usuario subió un nuevo audio, se reemplaza la ruta
+        if (req.files && req.files['audio']) {
+            audioUrl = `${baseURlSegura}/uploads/${req.files['audio'][0].filename}`;
+        }
+
         const elementoActualizado = await Multimedia.findByIdAndUpdate(
             req.params.id,
-            { titulo, descripcion, tags: listaTags },
-            { new: true } // Retorna el documento modificado
+            { titulo, descripcion, tags: listaTags, imagenUrl, audioUrl },
+            { new: true }
         );
+
         res.json({ mensaje: 'Actualizado con éxito', elemento: elementoActualizado });
     } catch (error) {
-        res.status(500).json({ error: 'Error al actualizar.' });
+        console.error(error);
+        res.status(500).json({ error: 'Error al actualizar el elemento.' });
     }
 });
 
-// 4. DELETE: Eliminar de MongoDB
+// 4. DELETE
 app.delete('/api/multimedia/:id', async (req, res) => {
     try {
-        await Multimedia.findByIdAndDelete(req.params.id); // Borrar registro de BD
+        await Multimedia.findByIdAndDelete(req.params.id);
         res.json({ mensaje: 'Elemento eliminado correctamente.' });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al eliminar.' });
-    }
+    } catch (error) { res.status(500).json({ error: 'Error al eliminar.' }); }
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
-    console.log(`📡 Servidor Backend corriendo en http://localhost:${PORT}`);
-});
+app.listen(PORT, () => { console.log(`📡 Servidor Backend corriendo en http://localhost:${PORT}`); });
