@@ -61,16 +61,24 @@ app.get('/api/multimedia', async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Error al obtener los datos.' }); }
 });
 
-// 3. UPDATE (¡CORREGIDO PARA ADMITIR NUEVAS IMÁGENES Y AUDIOS!)
+// 3. UPDATE (¡Optimizado y protegido contra datos nulos!)
 app.put('/api/multimedia/:id', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
-        const { titulo, descripcion, tags } = req.body;
-        const listaTags = tags ? tags.split(',').map(tag => tag.trim()) : [];
+        const { id } = req.params;
 
-        // Buscar el elemento actual en la base de datos
-        const elementoExistente = await Multimedia.findById(req.params.id);
+        // Buscar primero el elemento para no perder datos previos
+        const elementoExistente = await Multimedia.findById(id);
         if (!elementoExistente) {
             return res.status(404).json({ error: 'Elemento no encontrado.' });
+        }
+
+        // Validar textos: si no se envían, dejamos los valores que ya tenía guardados
+        const tituloFinal = req.body.titulo || elementoExistente.titulo;
+        const descripcionFinal = req.body.descripcion !== undefined ? req.body.descripcion : elementoExistente.descripcion;
+        
+        let listaTags = elementoExistente.tags;
+        if (req.body.tags !== undefined) {
+            listaTags = req.body.tags ? req.body.tags.split(',').map(tag => tag.trim()) : [];
         }
 
         let imagenUrl = elementoExistente.imagenUrl;
@@ -79,25 +87,26 @@ app.put('/api/multimedia/:id', upload.fields([{ name: 'imagen' }, { name: 'audio
         const baseURl = process.env.NODE_ENV === 'production' ? 'https://multimedia-backend-p6xb.onrender.com' : `${req.protocol}://${req.get('host')}`;
         const baseURlSegura = baseURl.replace("http://multimedia-backend-p6xb.onrender.com", "https://multimedia-backend-p6xb.onrender.com");
 
-        // Si el usuario subió una nueva imagen, se reemplaza la ruta
-        if (req.files && req.files['imagen']) {
+        // Si se subió una nueva imagen
+        if (req.files && req.files['imagen'] && req.files['imagen'][0]) {
             imagenUrl = `${baseURlSegura}/uploads/${req.files['imagen'][0].filename}`;
         }
 
-        // Si el usuario subió un nuevo audio, se reemplaza la ruta
-        if (req.files && req.files['audio']) {
+        // Si se subió un nuevo audio
+        if (req.files && req.files['audio'] && req.files['audio'][0]) {
             audioUrl = `${baseURlSegura}/uploads/${req.files['audio'][0].filename}`;
         }
 
+        // Actualizar el documento en MongoDB Atlas
         const elementoActualizado = await Multimedia.findByIdAndUpdate(
-            req.params.id,
-            { titulo, descripcion, tags: listaTags, imagenUrl, audioUrl },
+            id,
+            { titulo: tituloFinal, descripcion: descripcionFinal, tags: listaTags, imagenUrl, audioUrl },
             { new: true }
         );
 
         res.json({ mensaje: 'Actualizado con éxito', elemento: elementoActualizado });
     } catch (error) {
-        console.error(error);
+        console.error("Error en PUT:", error);
         res.status(500).json({ error: 'Error al actualizar el elemento.' });
     }
 });
