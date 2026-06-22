@@ -61,18 +61,23 @@ app.get('/api/multimedia', async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Error al obtener los datos.' }); }
 });
 
-// 3. UPDATE (¡Optimizado y protegido contra datos nulos!)
+// 3. UPDATE: Ruta blindada contra IDs inválidos y errores de Multer/Mongoose
 app.put('/api/multimedia/:id', upload.fields([{ name: 'imagen' }, { name: 'audio' }]), async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Buscar primero el elemento para no perder datos previos
-        const elementoExistente = await Multimedia.findById(id);
-        if (!elementoExistente) {
-            return res.status(404).json({ error: 'Elemento no encontrado.' });
+        // VALIDACIÓN CRÍTICA: Verificar si el ID tiene el formato correcto de MongoDB (24 caracteres hex)
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: 'El ID enviado no tiene un formato válido de MongoDB.' });
         }
 
-        // Validar textos: si no se envían, dejamos los valores que ya tenía guardados
+        // Buscar el elemento en la base de datos
+        const elementoExistente = await Multimedia.findById(id);
+        if (!elementoExistente) {
+            return res.status(404).json({ error: 'El elemento multimedia no existe.' });
+        }
+
+        // Procesar los textos del formulario (si vienen vacíos o no definidos, conservar los anteriores)
         const tituloFinal = req.body.titulo || elementoExistente.titulo;
         const descripcionFinal = req.body.descripcion !== undefined ? req.body.descripcion : elementoExistente.descripcion;
         
@@ -87,17 +92,17 @@ app.put('/api/multimedia/:id', upload.fields([{ name: 'imagen' }, { name: 'audio
         const baseURl = process.env.NODE_ENV === 'production' ? 'https://multimedia-backend-p6xb.onrender.com' : `${req.protocol}://${req.get('host')}`;
         const baseURlSegura = baseURl.replace("http://multimedia-backend-p6xb.onrender.com", "https://multimedia-backend-p6xb.onrender.com");
 
-        // Si se subió una nueva imagen
-        if (req.files && req.files['imagen'] && req.files['imagen'][0]) {
-            imagenUrl = `${baseURlSegura}/uploads/${req.files['imagen'][0].filename}`;
+        // Validar si realmente se subieron archivos nuevos en req.files
+        if (req.files) {
+            if (req.files['imagen'] && req.files['imagen'][0]) {
+                imagenUrl = `${baseURlSegura}/uploads/${req.files['imagen'][0].filename}`;
+            }
+            if (req.files['audio'] && req.files['audio'][0]) {
+                audioUrl = `${baseURlSegura}/uploads/${req.files['audio'][0].filename}`;
+            }
         }
 
-        // Si se subió un nuevo audio
-        if (req.files && req.files['audio'] && req.files['audio'][0]) {
-            audioUrl = `${baseURlSegura}/uploads/${req.files['audio'][0].filename}`;
-        }
-
-        // Actualizar el documento en MongoDB Atlas
+        // Actualizar el documento con los nuevos datos
         const elementoActualizado = await Multimedia.findByIdAndUpdate(
             id,
             { titulo: tituloFinal, descripcion: descripcionFinal, tags: listaTags, imagenUrl, audioUrl },
@@ -105,9 +110,10 @@ app.put('/api/multimedia/:id', upload.fields([{ name: 'imagen' }, { name: 'audio
         );
 
         res.json({ mensaje: 'Actualizado con éxito', elemento: elementoActualizado });
+
     } catch (error) {
-        console.error("Error en PUT:", error);
-        res.status(500).json({ error: 'Error al actualizar el elemento.' });
+        console.error("Error capturado en PUT:", error);
+        res.status(500).json({ error: 'Error interno en el servidor.', detalle: error.message });
     }
 });
 
